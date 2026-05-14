@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, rowToTimeBlock } from '@/lib/db'
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const body = await req.json()
     const { date, startHour, duration } = body
 
@@ -12,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         start_hour = COALESCE($2, start_hour),
         duration   = COALESCE($3, duration)
        WHERE id = $4 RETURNING *`,
-      [date ?? null, startHour ?? null, duration ?? null, params.id]
+      [date ?? null, startHour ?? null, duration ?? null, id]
     )
 
     if (result.rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -23,9 +24,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await query('DELETE FROM time_blocks WHERE id = $1', [params.id])
+    const { id } = await params
+    await query('DELETE FROM time_blocks WHERE id = $1', [id])
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/time-blocks/[id] error:', error)
