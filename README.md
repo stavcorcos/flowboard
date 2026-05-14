@@ -61,13 +61,6 @@ git remote add origin https://github.com/YOU/flowboard.git
 git push -u origin main
 ```
 
-Then import the repo at vercel.com. Vercel auto-injects the Postgres env vars — no extra config needed.
-
-After first deploy, run setup once:
-```bash
-npm run db:setup
-```
-
 ---
 
 ## API
