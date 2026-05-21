@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, rowToTicket } from '@/lib/db'
+import { auth } from '@/auth'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const { id } = await params
     const body = await req.json()
@@ -20,11 +24,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         assignee_color = COALESCE($9,  assignee_color),
         sort_order     = COALESCE($10, sort_order),
         updated_at     = NOW()
-       WHERE id = $11
+       WHERE id = $11 AND team_id = $12
        RETURNING *`,
       [title ?? null, description ?? null, status ?? null, priority ?? null,
        label ?? null, labelColor ?? null, dueDate ?? null,
-       assignee ?? null, assigneeColor ?? null, order ?? null, id]
+       assignee ?? null, assigneeColor ?? null, order ?? null, id, session.user.teamId]
     )
 
     if (result.rows.length === 0) {
@@ -39,9 +43,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const { id } = await params
-    await query('DELETE FROM tickets WHERE id = $1', [id])
+    await query('DELETE FROM tickets WHERE id = $1 AND team_id = $2', [id, session.user.teamId])
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/tickets/[id] error:', error)

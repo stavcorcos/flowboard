@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, rowToTimeBlock } from '@/lib/db'
+import { auth } from '@/auth'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const { id } = await params
     const body = await req.json()
@@ -25,6 +29,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const { id } = await params
     await query('DELETE FROM time_blocks WHERE id = $1', [id])

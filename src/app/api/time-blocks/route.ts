@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, rowToTimeBlock, newId } from '@/lib/db'
+import { auth } from '@/auth'
 
 export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const { searchParams } = new URL(req.url)
     const ticketId = searchParams.get('ticketId')
     const date     = searchParams.get('date')
-    const weekOf   = searchParams.get('weekOf') // 'YYYY-MM-DD' Monday of week
+    const weekOf   = searchParams.get('weekOf')
 
     let result
     if (ticketId) {
@@ -30,6 +34,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const body = await req.json()
     const { ticketId, date, startHour, duration } = body

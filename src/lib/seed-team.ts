@@ -1,20 +1,20 @@
-import { config } from 'dotenv'
-config({ path: '.env.local' })
+import { query, newId } from './db'
 
-import pg from 'pg'
-import bcrypt from 'bcryptjs'
-const { Pool } = pg
-const pool = new Pool({ connectionString: process.env.POSTGRES_URL_NON_POOLING })
-
-function newId() { return 'c' + Math.random().toString(36).slice(2, 11) + Date.now().toString(36) }
-
-function dateOffset(days) {
+function dateOffset(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
 }
 
-const SAMPLE_TICKETS = [
+const SAMPLE_TICKETS: {
+  title: string
+  status: string
+  priority: string
+  label: string
+  labelColor: string
+  dayOffset: number
+  order: number
+}[] = [
   { title: 'Project kick-off & planning',       status: 'DONE',        priority: 'HIGH',     label: 'Planning',  labelColor: '#5ecba1', dayOffset: 0,  order: 0 },
   { title: 'Set up repository & CI pipeline',   status: 'DONE',        priority: 'MEDIUM',   label: 'Dev',       labelColor: '#7ab8f5', dayOffset: 2,  order: 1 },
   { title: 'Design system & component library', status: 'IN_PROGRESS', priority: 'HIGH',     label: 'Design',    labelColor: '#a59dff', dayOffset: 4,  order: 0 },
@@ -27,12 +27,18 @@ const SAMPLE_TICKETS = [
   { title: 'Beta launch prep',                  status: 'BACKLOG',     priority: 'CRITICAL', label: 'Marketing', labelColor: '#f5c26b', dayOffset: 14, order: 3 },
 ]
 
-async function seedTeamTickets(teamId, projectId) {
-  const ticketIds = {}
+export async function seedNewTeam(teamId: string) {
+  const projectId = newId()
+  await query(
+    'INSERT INTO projects (id, name, description, color, team_id) VALUES ($1,$2,$3,$4,$5)',
+    [projectId, 'My First Project', 'Getting started — edit or delete these sample tickets.', '#a59dff', teamId]
+  )
+
+  const ticketIds: Record<string, string> = {}
   for (const t of SAMPLE_TICKETS) {
     const id = newId()
     ticketIds[t.title] = id
-    await pool.query(
+    await query(
       `INSERT INTO tickets (id, title, status, priority, label, label_color, due_date, sort_order, project_id, team_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [id, t.title, t.status, t.priority, t.label, t.labelColor,
@@ -40,6 +46,7 @@ async function seedTeamTickets(teamId, projectId) {
     )
   }
 
+  // Seed a handful of time blocks so the Week view looks populated
   const timeBlocks = [
     { ticket: 'Design system & component library', dayOffset: 1, startHour: 9,  duration: 2   },
     { ticket: 'Design system & component library', dayOffset: 3, startHour: 10, duration: 1.5 },
@@ -52,65 +59,9 @@ async function seedTeamTickets(teamId, projectId) {
   for (const b of timeBlocks) {
     const ticketId = ticketIds[b.ticket]
     if (!ticketId) continue
-    await pool.query(
+    await query(
       'INSERT INTO time_blocks (id, ticket_id, date, start_hour, duration) VALUES ($1,$2,$3,$4,$5)',
       [newId(), ticketId, dateOffset(b.dayOffset), b.startHour, b.duration]
     )
   }
 }
-
-async function seed() {
-  console.log('🌱 Seeding demo users...')
-
-  const demoPassword = await bcrypt.hash('demo123', 12)
-  const demoUsers = [
-    { id: 'user-jl', name: 'James Lee',       email: 'james@flowboard.app', color: '#f0889f' },
-    { id: 'user-mr', name: 'Maria Rodriguez', email: 'maria@flowboard.app', color: '#5ecba1' },
-    { id: 'user-tk', name: 'Tom Kim',         email: 'tom@flowboard.app',   color: '#f5c26b' },
-  ]
-
-  for (const u of demoUsers) {
-    await pool.query(`
-      INSERT INTO users (id, name, email, password_hash, avatar_color)
-      VALUES ($1,$2,$3,$4,$5)
-      ON CONFLICT (id) DO NOTHING
-    `, [u.id, u.name, u.email, demoPassword, u.color])
-
-    const firstName = u.name.split(' ')[0]
-    const teamId = `team-${u.id}`
-
-    // Delete existing team data for clean re-seed
-    await pool.query('DELETE FROM team_members WHERE team_id = $1', [teamId])
-    await pool.query(`
-      DELETE FROM time_blocks WHERE ticket_id IN (
-        SELECT id FROM tickets WHERE team_id = $1
-      )
-    `, [teamId])
-    await pool.query('DELETE FROM tickets WHERE team_id = $1', [teamId])
-    await pool.query('DELETE FROM projects WHERE team_id = $1', [teamId])
-    await pool.query('DELETE FROM teams WHERE id = $1', [teamId])
-
-    await pool.query(
-      'INSERT INTO teams (id, name) VALUES ($1,$2)',
-      [teamId, `${firstName}'s Team`]
-    )
-    await pool.query(
-      'INSERT INTO team_members (id, team_id, user_id, role) VALUES ($1,$2,$3,$4)',
-      [newId(), teamId, u.id, 'OWNER']
-    )
-
-    const projectId = newId()
-    await pool.query(
-      'INSERT INTO projects (id, name, description, color, team_id) VALUES ($1,$2,$3,$4,$5)',
-      [projectId, 'My First Project', 'Getting started — edit or delete these sample tickets.', '#a59dff', teamId]
-    )
-
-    await seedTeamTickets(teamId, projectId)
-    console.log(`  ✓ ${u.name} (${u.email}) — team "${firstName}'s Team" seeded`)
-  }
-
-  console.log('\n✅ Done. Demo credentials: james/maria/tom@flowboard.app — password: demo123')
-  await pool.end()
-}
-
-seed().catch(e => { console.error(e); process.exit(1) })

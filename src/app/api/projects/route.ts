@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, rowToProject, rowToTicket, newId } from '@/lib/db'
+import { auth } from '@/auth'
 
 export async function GET() {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
-    const projectRows = await query('SELECT * FROM projects ORDER BY created_at ASC')
-    const ticketRows  = await query('SELECT * FROM tickets ORDER BY sort_order ASC')
+    const projectRows = await query(
+      'SELECT * FROM projects WHERE team_id = $1 ORDER BY created_at ASC',
+      [session.user.teamId]
+    )
+    const ticketRows = await query(
+      'SELECT * FROM tickets WHERE team_id = $1 ORDER BY sort_order ASC',
+      [session.user.teamId]
+    )
 
     const projects = projectRows.rows.map(p => ({
       ...rowToProject(p),
@@ -19,6 +29,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const body = await req.json()
     const { name, description, color } = body
@@ -29,8 +42,8 @@ export async function POST(req: NextRequest) {
 
     const id = newId()
     const result = await query(
-      'INSERT INTO projects (id, name, description, color) VALUES ($1,$2,$3,$4) RETURNING *',
-      [id, name.trim(), description ?? null, color ?? '#7F77DD']
+      'INSERT INTO projects (id, name, description, color, team_id) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [id, name.trim(), description ?? null, color ?? '#7F77DD', session.user.teamId]
     )
 
     return NextResponse.json({ ...rowToProject(result.rows[0]), tickets: [] }, { status: 201 })
